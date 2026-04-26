@@ -1,4 +1,4 @@
-# z3nIO
+# z3nd3v
 
 [Русская версия](./README_RU.md) | English
 
