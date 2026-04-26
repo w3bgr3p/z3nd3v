@@ -1,0 +1,25 @@
+# Зависимости Node.js (интенсивно решает вашу проблему)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Базы данных и конфиги
+*.db
+config.json
+.env
+
+# Логи и временные файлы
+*.log
+.vscode/
+.idea/
+*.bat
+
