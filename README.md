@@ -1,4 +1,4 @@
-# z3nd3v
+# VibeIO
 
 [Русская версия](./README_RU.md) | English
 
