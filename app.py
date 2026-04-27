@@ -8,13 +8,16 @@ from fastapi.staticfiles import StaticFiles
 
 import config
 import db as db_module
-from scheduler_handler import router as scheduler_router, setup as scheduler_setup
-from sqlite_viewer_handler import router as sqlite_viewer_router
+from ai_handler import router as ai_router
+from ai_handler import start_agent_service, stop_agent_service
 from config_handler import router as config_router
-from ai_handler import router as ai_router, start_agent_service, stop_agent_service
+from docs_graph_handler import router as docs_graph_router  # импорт
+from scheduler_handler import router as scheduler_router
+from scheduler_handler import setup as scheduler_setup
 from scheduler_service import SchedulerService
+from sqlite_viewer_handler import router as sqlite_viewer_router
 
-PORT    = config.DASHBOARD_PORT
+PORT = config.DASHBOARD_PORT
 WWWROOT = config.WWWROOT
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -32,15 +35,16 @@ app.include_router(scheduler_router)
 app.include_router(sqlite_viewer_router)
 app.include_router(config_router)
 app.include_router(ai_router)
-
+app.include_router(docs_graph_router)  # регистрация
 # ── Startup / shutdown ────────────────────────────────────────────────────────
+
 
 @app.on_event("startup")
 async def startup():
     pool = await db_module.create_pool(
-        mode = config.DB_MODE,
-        dsn  = getattr(config, "DB_DSN",  ""),
-        path = getattr(config, "DB_PATH", "data.db"),
+        mode=config.DB_MODE,
+        dsn=getattr(config, "DB_DSN", ""),
+        path=getattr(config, "DB_PATH", "data.db"),
     )
 
     service = SchedulerService(pool)
@@ -48,10 +52,14 @@ async def startup():
     await start_agent_service()
 
     scheduler_setup(pool, service, WWWROOT)
-    app.state.pool    = pool
+    app.state.pool = pool
     app.state.service = service
 
-    label = config.DB_PATH if config.DB_MODE == "sqlite" else getattr(config, "DB_DSN", "").split("@")[-1]
+    label = (
+        config.DB_PATH
+        if config.DB_MODE == "sqlite"
+        else getattr(config, "DB_DSN", "").split("@")[-1]
+    )
     print(f"DB [{config.DB_MODE}]: {label}")
     print(f"Wwwroot: {WWWROOT}")
     print(f"Listening: http://localhost:{PORT}")

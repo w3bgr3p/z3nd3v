@@ -10,12 +10,10 @@ OMNI_ROUTE_HOST = "http://localhost:20128/"
 
 
 AGENT_PORT = 20129
-ANTHROPIC_AUTH_TOKEN = "sk-your-token-here"
+ANTHROPIC_AUTH_TOKEN = "sk-18bd9f63a5633631-53412f-38506629"
 ANTHROPIC_MODEL = "kr/claude-sonnet-4.5"
-CLAUDE_CLI_PATH = (
-    r"C:\Users\l3gi0n\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\cli.js"
-)
-NODE_PATH = r"C:\Program Files\nodejs\node.exe"
+CLAUDE_CLI_PATH = "/home/w3bgr3p/.nvm/versions/node/v22.22.2/lib/node_modules/@anthropic-ai/claude-code/cli-wrapper.cjs"
+NODE_PATH       = "/home/w3bgr3p/.nvm/versions/node/v22.22.2/bin/node"
 
 
 # Terminal
