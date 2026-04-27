@@ -32,7 +32,7 @@ window.NAV_CONFIG = {
     //  { id: 'treasury',        label: 'Treasury',         href: '/?page=treasury',       hotkey: '8' },
     //  { id: 'system',        label: 'System',         href: '/?page=system',       hotkey: 'S' },
     //   { id: 'config',    label: 'Config',     href: '/?page=config',   hotkey: '0' },
-    //   { id: 'help',      label: 'Docs',       href: '/docs',           hotkey: 'H' },
+    { id: "graph", label: "Graph", href: "/docs-graph", hotkey: "G" },
     //   { id: 'graph',      label: 'Grapher',       href: '/?page=graph',           hotkey: 'G' },
     //{ id: 'terminal',      label: 'Terminal',       href: '/?page=terminal',           hotkey: 'R' },
   ],
