@@ -35,6 +35,31 @@ _agent_dir   = Path(__file__).parent / "agent-service"
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
+def _kill_port(port: int):
+    """Kill whatever process is listening on port using psutil."""
+    import psutil
+    import signal
+    killed = []
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            for conn in proc.net_connections(kind='tcp'):
+                if conn.laddr.port == port and conn.status == 'LISTEN':
+                    proc.kill()
+                    killed.append(proc.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    if killed:
+        print(f"[ai] killed stale process(es) on port {port}: {killed}")
+
+import psutil
+for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+    try:
+        for conn in proc.net_connections(kind='tcp'):
+            if conn.laddr.port == 20129:
+                print(f"[ai] port 20129 held by PID {proc.pid} name={proc.name()} cmd={proc.cmdline()[:2]}")
+    except Exception:
+        pass
+
 async def start_agent_service():
     """Check if agent-service running, try to start if not."""
     # First check if already running (e.g. started manually)
@@ -46,6 +71,10 @@ async def start_agent_service():
                 return
     except Exception:
         pass
+
+    # Kill stale process holding the port
+    _kill_port(getattr(config, "AGENT_PORT", 20129))
+    await asyncio.sleep(0.5)
 
     if not _agent_dir.exists():
         print(f"[ai] agent-service dir not found: {_agent_dir}")

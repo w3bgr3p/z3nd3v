@@ -10,7 +10,7 @@ OMNI_ROUTE_HOST = "http://localhost:20128/"
 
 
 AGENT_PORT = 20129
-ANTHROPIC_AUTH_TOKEN = "sk-your-token-here"
+ANTHROPIC_AUTH_TOKEN = "sk-8dfe8b5f1f3a9686-d5zeeu-6beec0a6"
 ANTHROPIC_MODEL = "kr/claude-sonnet-4.5"
 CLAUDE_CLI_PATH = (
     r"C:\Users\l3gi0n\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\cli.js"
