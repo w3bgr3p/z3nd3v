@@ -38,6 +38,8 @@ SCHEMA = {
     "last_run_id":       "TEXT DEFAULT ''",
     "terminal_override": "TEXT DEFAULT ''",
     "terminal_init_cmd": "TEXT DEFAULT ''",
+    "trigger_on_success": "TEXT DEFAULT ''",
+    "trigger_on_fail":    "TEXT DEFAULT ''",
 }
 
 QUEUE_SCHEMA = {
@@ -460,6 +462,12 @@ class SchedulerService:
                 await self._update_status(conn, sid, status, datetime.now(timezone.utc), str(exit_code), output, run_id)
                 await self._finish_queue_entry(conn, queue_uuid, "done", run_id)
 
+                # Trigger dependent tasks on success
+                if exit_code == 0:
+                    await self._fire_triggers(conn, rec, "trigger_on_success")
+                else:
+                    await self._fire_triggers(conn, rec, "trigger_on_fail")
+
         except Exception as ex:
             await rp.add_line(f"[ERR] {ex}")
             sse_broadcast(sid, {"line": f"[ERR] {ex}", "level": "ERROR"})
@@ -469,6 +477,9 @@ class SchedulerService:
                 status = "running" if self._count_active(sid) > 0 else "error"
                 await self._update_status(conn, sid, status, datetime.now(timezone.utc), "-1", output, run_id)
                 await self._finish_queue_entry(conn, queue_uuid, "error", run_id)
+
+                # Trigger dependent tasks on failure
+                await self._fire_triggers(conn, rec, "trigger_on_fail")
         finally:
             async with self._lock:
                 self._running.pop(instance_key, None)
@@ -659,3 +670,28 @@ class SchedulerService:
         await conn.execute(
             f'DELETE FROM "{QUEUE_TABLE}" WHERE schedule_id=$1 AND status=\'pending\'', sid
         )
+
+    async def _fire_triggers(self, conn, rec: dict, trigger_field: str):
+        """Fire dependent tasks based on trigger configuration."""
+        trigger_ids = rec.get(trigger_field, "")
+        if not trigger_ids or not trigger_ids.strip():
+            return
+
+        # Support comma-separated list of task IDs
+        task_ids = [tid.strip() for tid in trigger_ids.split(",") if tid.strip()]
+
+        for task_id in task_ids:
+            # Fetch the dependent task
+            dep_task = await conn.fetchrow(f'SELECT * FROM "{TABLE}" WHERE id=$1', task_id)
+            if not dep_task:
+                continue
+
+            dep_rec = dict(dep_task)
+
+            # Check if task is enabled
+            if dep_rec.get("enabled", "true") != "true":
+                continue
+
+            # Fire the dependent task
+            asyncio.create_task(self._launch(dep_rec))
+

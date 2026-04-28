@@ -26,6 +26,7 @@ COLUMNS = [
     "payload_schema", "payload_values",
     "runs_total", "runs_success", "schedule_tag", "last_run_id",
     "terminal_override", "terminal_init_cmd",
+    "trigger_on_success", "trigger_on_fail",
 ]
 
 
