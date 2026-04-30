@@ -553,10 +553,11 @@ function runInstall(s, btn) {
             var d    = JSON.parse(e.data);
             var line  = d.line || '';
             var level = (d.level || 'INFO').toUpperCase();
+            var timestamp = new Date().toISOString();
             if (!box) return;
             var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
             box.insertAdjacentHTML('beforeend',
-                '<div class="out-line ' + level + '">' + escHtml(line) + '</div>');
+                '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>');
             if (atBottom) box.scrollTop = box.scrollHeight;
         } catch(err) {}
     });
@@ -1031,7 +1032,8 @@ function renderOutputLines(text) {
         if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
         else if (/\[WARNING\]|\[WARN\]/i.test(line)) level = 'WARNING';
         else if (/\[DEBUG\]/i.test(line))            level = 'DEBUG';
-        return '<div class="out-line ' + level + '">' + escHtml(line) + '</div>';
+        var timestamp = new Date().toISOString();
+        return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>';
     }).join('');
 }
 
@@ -1051,12 +1053,13 @@ function loadOutput(id) {
             if (!text.trim()) {
                 box.innerHTML = '<div class="out-line empty">(no output yet)</div>';
             } else {
+                var timestamp = new Date().toISOString();
                 box.innerHTML = text.split('\n').map(function(line) {
                     var level = 'INFO';
                     if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
                     else if (/\[WARNING\]|\[WARN\]/i.test(line)) level = 'WARNING';
                     else if (/\[DEBUG\]/i.test(line))            level = 'DEBUG';
-                    return '<div class="out-line ' + level + '">' + escHtml(line) + '</div>';
+                    return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>';
                 }).join('');
                 box.scrollTop = box.scrollHeight;
             }
@@ -1087,14 +1090,21 @@ function startSseOutput(id) {
             var line        = d.line || '';
             var last        = box.lastElementChild;
             var replaceLast = !!d.replace_last;
+            var timestamp   = new Date().toISOString();
             function progressPrefix(s) { return s.replace(/[\d%\[\]]+.*$/, '').trim(); }
             var sameProgress = last && last.classList.contains('out-line') && !last.classList.contains('empty')
-                && progressPrefix(line).length > 3 && progressPrefix(line) === progressPrefix(last.textContent);
+                && progressPrefix(line).length > 3 && progressPrefix(line) === progressPrefix(last.querySelector('.out-line-text') ? last.querySelector('.out-line-text').textContent : last.textContent);
             if (replaceLast || sameProgress) {
                 last.className   = 'out-line ' + level;
-                last.textContent = line;
+                var textSpan = last.querySelector('.out-line-text');
+                var timeSpan = last.querySelector('.out-line-timestamp');
+                if (textSpan) textSpan.textContent = line;
+                else {
+                    last.innerHTML = '<span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span>';
+                }
+                if (timeSpan) timeSpan.textContent = timestamp;
             } else {
-                box.insertAdjacentHTML('beforeend', '<div class="out-line ' + level + '">' + escHtml(line) + '</div>');
+                box.insertAdjacentHTML('beforeend', '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>');
             }
             if (atBottom) box.scrollTop = box.scrollHeight;
             if (badge) badge.style.display = 'inline-block';
