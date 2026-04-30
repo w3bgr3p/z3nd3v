@@ -29,7 +29,7 @@
 
   // ── DOM ────────────────────────────────────────────────────────────────────
 
-  var _panel, _body, _input, _sendBtn, _newBtn, _resizer, _styleEl
+  var _panel, _body, _input, _sendBtn, _newBtn, _interruptBtn, _resizer, _styleEl
 
   function _buildDOM() {
     // style injection
@@ -94,6 +94,7 @@
       }
       .ai-hbtn:hover { color: var(--text, #e6edf3); border-color: var(--text2, #8b949e); }
       .ai-hbtn.danger:hover { color: var(--red, #f85149); border-color: var(--red, #f85149); }
+      .ai-hbtn:disabled { opacity: 0.5; cursor: not-allowed; }
       #ai-panel-msgs {
         flex: 1;
         overflow-y: auto;
@@ -218,6 +219,7 @@
       <div id="ai-panel">
         <div id="ai-panel-header">
           <h3>⟡ AI Agent</h3>
+          <button class="ai-hbtn" id="ai-interrupt-btn" title="Interrupt agent (Ctrl+C)" disabled>⏸ Stop</button>
           <button class="ai-hbtn" id="ai-new-btn" title="New session">↺ New</button>
           <button class="ai-hbtn danger" id="ai-close-btn" title="Close panel">✕</button>
         </div>
@@ -240,11 +242,13 @@
     _input   = document.getElementById('ai-panel-input')
     _sendBtn = document.getElementById('ai-send-btn')
     _newBtn  = document.getElementById('ai-new-btn')
+    _interruptBtn = document.getElementById('ai-interrupt-btn')
     _resizer = document.getElementById('ai-panel-resizer')
 
     document.getElementById('ai-close-btn').onclick = function () { AiPanel.close() }
     _newBtn.onclick   = _newSession
     _sendBtn.onclick  = _sendMessage
+    _interruptBtn.onclick = _interruptAgent
 
     _input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); _sendMessage() }
@@ -316,9 +320,40 @@
     _body.innerHTML = '<div class="ai-empty">New session started.</div>'
     _input.disabled   = false
     _sendBtn.disabled = false
+    _interruptBtn.disabled = true
     _setStatus('')
     // reset cwd to default (app root)
     AiPanel._cwd = AiPanel._defaultCwd || ''
+  }
+
+  // ── Interrupt ──────────────────────────────────────────────────────────────
+
+  function _interruptAgent() {
+    if (!_streaming) return
+
+    fetch('/ai/interrupt', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ chatId: _chatId }),
+    }).then(function (resp) {
+      return resp.json()
+    }).then(function (data) {
+      if (data.ok) {
+        _setStatus('⏸ interrupted')
+        _appendToMsg(_body.lastElementChild, '\n\n[Interrupted by user]')
+      } else {
+        _setStatus('⚠ interrupt failed: ' + (data.error || 'unknown'))
+      }
+    }).catch(function (e) {
+      _setStatus('⚠ interrupt error: ' + e.message)
+    })
+
+    // Immediately disable streaming UI
+    _streaming = false
+    _input.disabled   = false
+    _sendBtn.disabled = false
+    _interruptBtn.disabled = true
+    if (_sseSource) { _sseSource.close(); _sseSource = null }
   }
 
   // ── Context ────────────────────────────────────────────────────────────────
@@ -358,6 +393,7 @@
     _streaming = true
     _input.disabled   = true
     _sendBtn.disabled = true
+    _interruptBtn.disabled = false
     _setStatus('● thinking…')
 
     var cwd = ''
@@ -419,6 +455,7 @@
     _streaming        = false
     _input.disabled   = false
     _sendBtn.disabled = false
+    _interruptBtn.disabled = true
     _setStatus('')
     // remove cursor
     var cursor = msgEl.querySelector('.ai-stream-cursor')
