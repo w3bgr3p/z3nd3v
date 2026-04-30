@@ -40,37 +40,49 @@
         .refresh-btn:hover { opacity: 0.8; }
 
         .content { flex: 1; overflow-y: auto; padding: 20px; }
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 16px;
-        }
 
-        .service-card {
+        .services-table {
+            width: 100%; border-collapse: collapse;
             background: var(--bg1); border: 1px solid var(--border);
-            border-radius: 8px; padding: 16px; cursor: pointer;
-            transition: all 0.2s;
+            border-radius: 8px; overflow: hidden;
         }
-        .service-card:hover {
-            border-color: var(--accent);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        .services-table thead {
+            background: var(--bg); border-bottom: 2px solid var(--border);
         }
-        .service-card.status-active { border-left: 4px solid #4caf50; }
-        .service-card.status-failed { border-left: 4px solid #f44336; }
-        .service-card.status-inactive { border-left: 4px solid #757575; }
-
-        .service-header {
-            display: flex; justify-content: space-between;
-            align-items: center; margin-bottom: 8px;
+        .services-table th {
+            padding: 12px 16px; text-align: left;
+            font-size: 12px; font-weight: 600;
+            color: var(--text2); text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .services-table tbody tr {
+            border-bottom: 1px solid var(--border);
+            cursor: pointer; transition: background 0.2s;
+        }
+        .services-table tbody tr:hover {
+            background: var(--bg);
+        }
+        .services-table tbody tr.status-active {
+            border-left: 3px solid #4caf50;
+        }
+        .services-table tbody tr.status-failed {
+            border-left: 3px solid #f44336;
+        }
+        .services-table tbody tr.status-inactive {
+            border-left: 3px solid #757575;
+        }
+        .services-table td {
+            padding: 12px 16px; font-size: 13px;
+            color: var(--text);
         }
         .service-name {
             font-weight: 600; color: var(--text);
-            font-size: 14px; word-break: break-word;
+            font-size: 13px;
         }
         .status-badge {
             padding: 4px 8px; border-radius: 4px;
-            font-size: 11px; font-weight: 600; text-transform: uppercase;
+            font-size: 11px; font-weight: 600;
+            text-transform: uppercase; display: inline-block;
         }
         .status-badge.status-active {
             background: rgba(76, 175, 80, 0.2); color: #4caf50;
@@ -81,20 +93,16 @@
         .status-badge.status-inactive {
             background: rgba(117, 117, 117, 0.2); color: #9e9e9e;
         }
-
-        .service-description {
-            color: var(--text2); font-size: 12px;
-            margin-bottom: 12px; line-height: 1.4;
-            display: -webkit-box; -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical; overflow: hidden;
+        .metric-cell {
+            font-family: "Courier New", monospace;
+            font-size: 12px; color: var(--text2);
         }
-        .service-meta {
-            display: flex; gap: 12px; font-size: 11px; color: var(--text2);
+        .metric-value {
+            color: var(--text);
         }
-        .load-state, .sub-state {
-            padding: 2px 6px; background: var(--bg);
-            border-radius: 3px;
-        }
+        .metric-good { color: #4caf50; }
+        .metric-warn { color: #ff9800; }
+        .metric-bad { color: #f44336; }
 
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -186,7 +194,20 @@
             </div>
         </div>
         <div class="content">
-            <div id="servicesGrid" class="services-grid"></div>
+            <table id="servicesTable" class="services-table">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Status</th>
+                        <th>CPU</th>
+                        <th>Memory</th>
+                        <th>PID</th>
+                        <th>Uptime</th>
+                        <th>Tasks</th>
+                    </tr>
+                </thead>
+                <tbody id="servicesBody"></tbody>
+            </table>
         </div>
     </div>
 
@@ -202,6 +223,7 @@
 
     <script>
         let services = [];
+        let servicesDetails = new Map();
         let selectedService = null;
 
         async function loadServices() {
@@ -209,10 +231,65 @@
                 const res = await fetch("/systemd/list");
                 const data = await res.json();
                 services = data.services || [];
+
+                // Load details for active services
+                const activeServices = services.filter(s => s.active === "active").slice(0, 50);
+                await Promise.all(activeServices.map(async s => {
+                    try {
+                        const detailRes = await fetch(`/systemd/status/${encodeURIComponent(s.unit)}`);
+                        const detailData = await detailRes.json();
+                        servicesDetails.set(s.unit, detailData.properties || {});
+                    } catch (e) {
+                        // Ignore errors for individual services
+                    }
+                }));
+
                 renderServices();
             } catch (err) {
-                document.getElementById("servicesGrid").innerHTML = `<div class="error">Error: ${err.message}</div>`;
+                document.getElementById("servicesBody").innerHTML = `<tr><td colspan="7" class="error">Error: ${err.message}</td></tr>`;
             }
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes || bytes === "0" || bytes === "[not set]") return "-";
+            const num = parseInt(bytes);
+            if (isNaN(num)) return "-";
+            if (num < 1024) return num + " B";
+            if (num < 1024 * 1024) return (num / 1024).toFixed(1) + " KB";
+            if (num < 1024 * 1024 * 1024) return (num / (1024 * 1024)).toFixed(1) + " MB";
+            return (num / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+        }
+
+        function formatCPU(nsec) {
+            if (!nsec || nsec === "0" || nsec === "[not set]") return "-";
+            const num = parseInt(nsec);
+            if (isNaN(num)) return "-";
+            const seconds = num / 1e9;
+            if (seconds < 60) return seconds.toFixed(1) + "s";
+            if (seconds < 3600) return (seconds / 60).toFixed(1) + "m";
+            return (seconds / 3600).toFixed(1) + "h";
+        }
+
+        function formatUptime(timestamp) {
+            if (!timestamp || timestamp === "0" || timestamp === "[not set]") return "-";
+            const startTime = new Date(parseInt(timestamp) / 1000);
+            if (isNaN(startTime.getTime())) return "-";
+            const now = new Date();
+            const diff = now - startTime;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            if (days > 0) return `${days}d ${hours}h`;
+            if (hours > 0) return `${hours}h ${minutes}m`;
+            return `${minutes}m`;
+        }
+
+        function getMemoryClass(bytes) {
+            const num = parseInt(bytes);
+            if (isNaN(num)) return "";
+            if (num > 1024 * 1024 * 1024) return "metric-bad";
+            if (num > 512 * 1024 * 1024) return "metric-warn";
+            return "metric-good";
         }
 
         function renderServices() {
@@ -229,25 +306,33 @@
                 return matchesName && matchesStatus;
             });
 
-            const grid = document.getElementById("servicesGrid");
+            const tbody = document.getElementById("servicesBody");
             if (filtered.length === 0) {
-                grid.innerHTML = "<div class='loading'>No services found</div>";
+                tbody.innerHTML = "<tr><td colspan='7' class='loading'>No services found</td></tr>";
                 return;
             }
 
-            grid.innerHTML = filtered.map(s => `
-                <div class="service-card status-${s.active}" onclick="openModal('${s.unit.replace(/'/g, "\\'")}')">
-                    <div class="service-header">
-                        <span class="service-name">${s.unit}</span>
-                        <span class="status-badge status-${s.active}">${s.active}</span>
-                    </div>
-                    <div class="service-description">${s.description || ""}</div>
-                    <div class="service-meta">
-                        <span class="load-state">${s.load}</span>
-                        <span class="sub-state">${s.sub}</span>
-                    </div>
-                </div>
-            `).join("");
+            tbody.innerHTML = filtered.map(s => {
+                const props = servicesDetails.get(s.unit) || {};
+                const memory = formatBytes(props.MemoryCurrent);
+                const cpu = formatCPU(props.CPUUsageNSec);
+                const pid = props.MainPID && props.MainPID !== "0" ? props.MainPID : "-";
+                const uptime = formatUptime(props.ExecMainStartTimestamp);
+                const tasks = props.TasksCurrent || "-";
+                const memClass = getMemoryClass(props.MemoryCurrent);
+
+                return `
+                    <tr class="status-${s.active}" onclick="openModal('${s.unit.replace(/'/g, "\\'")}')">
+                        <td><span class="service-name">${s.unit}</span></td>
+                        <td><span class="status-badge status-${s.active}">${s.active}</span></td>
+                        <td class="metric-cell"><span class="metric-value">${cpu}</span></td>
+                        <td class="metric-cell"><span class="metric-value ${memClass}">${memory}</span></td>
+                        <td class="metric-cell"><span class="metric-value">${pid}</span></td>
+                        <td class="metric-cell"><span class="metric-value">${uptime}</span></td>
+                        <td class="metric-cell"><span class="metric-value">${tasks}</span></td>
+                    </tr>
+                `;
+            }).join("");
         }
 
         async function openModal(serviceName) {
