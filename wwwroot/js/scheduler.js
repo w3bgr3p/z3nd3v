@@ -859,6 +859,11 @@ function renderSettings(s) {
         }).join('') + '</select>'
         + '<div class="form-label">Arguments</div>'
         + '<input class="form-input" id="f_args" value="' + escHtml(s.args) + '">'
+        + '<div class="form-label">Virtual Env (Python)</div>'
+        + '<div style="display:flex;gap:4px;align-items:center;">'
+        + '<input class="form-input" id="f_venv_path" value="' + escHtml(s.venv_path || '') + '" placeholder="Auto-detect or /path/to/venv" style="flex:1">'
+        + '<button class="btn" onclick="detectVenv(\'' + escHtml(id) + '\')" style="padding:4px 8px;font-size:10px">Detect</button>'
+        + '</div>'
         + '<div class="form-label">Enabled</div>'
         + '<select class="form-input" id="f_enabled">'
         + '<option value="true" '  + (s.enabled !== 'false' ? 'selected' : '') + '>Yes</option>'
@@ -1367,6 +1372,7 @@ async function saveSchedule(existingId) {
         executor:         document.getElementById('f_executor').value,
         script_path:      document.getElementById('f_script_path').value.trim(),
         args:             document.getElementById('f_args').value.trim(),
+        venv_path:        document.getElementById('f_venv_path').value.trim(),
         enabled:          document.getElementById('f_enabled').value,
         cron:             document.getElementById('f_cron').value.trim(),
         interval_minutes: document.getElementById('f_interval_minutes').value,
@@ -1380,6 +1386,27 @@ async function saveSchedule(existingId) {
     var data = await res.json();
     if (data.ok) { selectedId = data.id; formDirty = false; await loadList(); selectRow(data.id); }
     else Dialog.error(data.error || 'Save failed');
+}
+
+async function detectVenv(id) {
+    if (!id) return;
+    var res = await fetch('/scheduler/detect-venv?id=' + encodeURIComponent(id));
+    var data = await res.json();
+    if (!data.ok) {
+        Dialog.error('Failed to detect venv');
+        return;
+    }
+    if (!data.venvs || data.venvs.length === 0) {
+        Dialog.info('No virtual environments found in script folder.\n\nSearched for: .venv, venv, env');
+        return;
+    }
+    // Use first detected venv
+    var venv = data.venvs[0];
+    var input = document.getElementById('f_venv_path');
+    if (input) {
+        input.value = venv.path;
+        Dialog.info('Detected venv: ' + venv.name + '\n\nPath: ' + venv.path);
+    }
 }
 
 function _nextDuplicateName(name, existingNames) {

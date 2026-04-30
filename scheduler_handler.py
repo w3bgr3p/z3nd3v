@@ -27,6 +27,7 @@ COLUMNS = [
     "runs_total", "runs_success", "schedule_tag", "last_run_id",
     "terminal_override", "terminal_init_cmd",
     "trigger_on_success", "trigger_on_fail",
+    "venv_path",
 ]
 
 
@@ -701,6 +702,36 @@ def _find_gitbash() -> str | None:
     return None
 
 
+def _detect_venv(script_path: str) -> list[dict]:
+    """Detect available venv folders in script directory."""
+    folder = script_path if os.path.isdir(script_path) else os.path.dirname(script_path)
+    if not os.path.isdir(folder):
+        return []
+
+    venv_candidates = [".venv", "venv", "env", ".env"]
+    results = []
+
+    for venv_name in venv_candidates:
+        venv_path = os.path.join(folder, venv_name)
+        if not os.path.isdir(venv_path):
+            continue
+
+        # Check for Python executable
+        if sys.platform == "win32":
+            python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+        else:
+            python_exe = os.path.join(venv_path, "bin", "python")
+
+        if os.path.isfile(python_exe):
+            results.append({
+                "name": venv_name,
+                "path": venv_path,
+                "python": python_exe,
+            })
+
+    return results
+
+
 @router.get("/terminal-config")
 async def terminal_config():
     """Return current terminal config and git bash availability."""
@@ -712,3 +743,20 @@ async def terminal_config():
         "terminal_path": path,
         "gitbash_found": gb or "",
     })
+
+
+@router.get("/detect-venv")
+async def detect_venv(id: str = ""):
+    """Detect available venv folders for a given task."""
+    if not id:
+        return Response(status_code=400)
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f'SELECT script_path FROM "{TABLE}" WHERE id=$1', id
+        )
+    if not row:
+        return _json({"ok": False, "venvs": []})
+
+    script_path = row["script_path"] or ""
+    venvs = _detect_venv(script_path)
+    return _json({"ok": True, "venvs": venvs})
