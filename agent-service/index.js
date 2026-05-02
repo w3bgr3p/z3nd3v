@@ -7,6 +7,7 @@ import { dirname } from 'path'
 const app  = express()
 const PORT = parseInt(process.env.AGENT_PORT || '20129')
 const sessions = new Map()
+const activeProcesses = new Map()  // chatId -> child_process
 const cfg = JSON.parse(process.env.AGENT_CONFIG || '{}')
 
 const CLAUDE_CLI = cfg.claudeCli ||
@@ -41,7 +42,7 @@ function resolveDir(p) {
 app.use(express.json())
 
 app.post('/chat', async (req, res) => {
-  const { chatId, message, cwd } = req.body
+  const { chatId, message, cwd, model } = req.body
   if (!chatId || !message) return res.status(400).json({ error: 'chatId and message required' })
 
   res.setHeader('Content-Type',  'text/event-stream')
@@ -56,6 +57,13 @@ app.post('/chat', async (req, res) => {
     const sessionId = sessions.get(chatId)
     const spawnCwd  = resolveDir(cwd)
 
+    // Create custom env with selected model
+    const customEnv = { ...agentEnv }
+    if (model) {
+      customEnv.ANTHROPIC_MODEL = model
+      customEnv.ANTHROPIC_SMALL_FAST_MODEL = model
+    }
+
     const args = [
       CLAUDE_CLI,
       '--output-format', 'stream-json',
@@ -66,17 +74,22 @@ app.post('/chat', async (req, res) => {
     if (sessionId) args.push('--resume', sessionId)
 
     console.log('[spawn] cwd:', spawnCwd)
+    console.log('[spawn] model:', model || customEnv.ANTHROPIC_MODEL)
 
     const proc = spawn(process.execPath, args, {
       cwd:         spawnCwd,
-      env:         agentEnv,
+      env:         customEnv,
       stdio:       ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     })
 
+    // Store active process for interrupt capability
+    activeProcesses.set(chatId, proc)
+
     proc.on('error', err => {
       console.error('[spawn-error]', err.code, err.message)
       send('error', { error: err.message })
+      activeProcesses.delete(chatId)
     })
 
     proc.stdin.write(message)
@@ -112,11 +125,15 @@ app.post('/chat', async (req, res) => {
       proc.on('error', resolve)
     })
 
+    // Clean up active process tracking
+    activeProcesses.delete(chatId)
+
     send('done', { sessionId: sessions.get(chatId) || '' })
 
   } catch (err) {
     console.error('[chat-error]', err.message)
     send('error', { error: err.message || String(err) })
+    activeProcesses.delete(chatId)
   } finally {
     res.end()
   }
@@ -125,5 +142,23 @@ app.post('/chat', async (req, res) => {
 app.delete('/session/:chatId', (req, res) => res.json({ ok: sessions.delete(req.params.chatId) }))
 app.get('/sessions', (req, res) => res.json({ sessions: Object.fromEntries(sessions) }))
 app.get('/health',   (req, res) => res.json({ ok: true }))
+
+app.post('/interrupt', (req, res) => {
+  const { chatId } = req.body
+  if (!chatId) return res.status(400).json({ error: 'chatId required' })
+
+  const proc = activeProcesses.get(chatId)
+  if (!proc) return res.json({ ok: false, error: 'No active process for this chatId' })
+
+  try {
+    proc.kill('SIGTERM')
+    activeProcesses.delete(chatId)
+    console.log(`[interrupt] killed process for chatId: ${chatId}`)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('[interrupt-error]', err.message)
+    res.status(500).json({ ok: false, error: err.message })
+  }
+})
 
 app.listen(PORT, '127.0.0.1', () => console.log(`[agent-service] listening on 127.0.0.1:${PORT}`))

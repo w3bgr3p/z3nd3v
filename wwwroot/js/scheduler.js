@@ -553,18 +553,11 @@ function runInstall(s, btn) {
             var d    = JSON.parse(e.data);
             var line  = d.line || '';
             var level = (d.level || 'INFO').toUpperCase();
-            var timestamp = d.timestamp || '';
-            var timeStr = '';
-            if (timestamp) {
-                try {
-                    var dt = new Date(timestamp);
-                    timeStr = dt.toISOString().slice(11, 23);
-                } catch(e) {}
-            }
+            var timestamp = new Date().toLocaleString('en-US', {hour12: false});
             if (!box) return;
             var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
             box.insertAdjacentHTML('beforeend',
-                '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span>' + (timeStr ? '<span class="out-line-time">' + escHtml(timeStr) + '</span>' : '') + '</div>');
+                '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>');
             if (atBottom) box.scrollTop = box.scrollHeight;
         } catch(err) {}
     });
@@ -867,6 +860,11 @@ function renderSettings(s) {
         }).join('') + '</select>'
         + '<div class="form-label">Arguments</div>'
         + '<input class="form-input" id="f_args" value="' + escHtml(s.args) + '">'
+        + '<div class="form-label">Virtual Env (Python)</div>'
+        + '<div style="display:flex;gap:4px;align-items:center;">'
+        + '<input class="form-input" id="f_venv_path" value="' + escHtml(s.venv_path || '') + '" placeholder="Auto-detect or /path/to/venv" style="flex:1">'
+        + '<button class="btn" onclick="detectVenv(\'' + escHtml(id) + '\')" style="padding:4px 8px;font-size:10px">Detect</button>'
+        + '</div>'
         + '<div class="form-label">Enabled</div>'
         + '<select class="form-input" id="f_enabled">'
         + '<option value="true" '  + (s.enabled !== 'false' ? 'selected' : '') + '>Yes</option>'
@@ -1034,7 +1032,8 @@ function renderOutputLines(text) {
         if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
         else if (/\[WARNING\]|\[WARN\]/i.test(line)) level = 'WARNING';
         else if (/\[DEBUG\]/i.test(line))            level = 'DEBUG';
-        return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span></div>';
+        var timestamp = new Date().toLocaleString('en-US', {hour12: false});
+        return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>';
     }).join('');
 }
 
@@ -1054,12 +1053,13 @@ function loadOutput(id) {
             if (!text.trim()) {
                 box.innerHTML = '<div class="out-line empty">(no output yet)</div>';
             } else {
+                var timestamp = new Date().toLocaleString('en-US', {hour12: false});
                 box.innerHTML = text.split('\n').map(function(line) {
                     var level = 'INFO';
                     if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
                     else if (/\[WARNING\]|\[WARN\]/i.test(line)) level = 'WARNING';
                     else if (/\[DEBUG\]/i.test(line))            level = 'DEBUG';
-                    return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span></div>';
+                    return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>';
                 }).join('');
                 box.scrollTop = box.scrollHeight;
             }
@@ -1088,24 +1088,23 @@ function startSseOutput(id) {
             var level       = (d.level || 'INFO').toUpperCase();
             var atBottom    = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
             var line        = d.line || '';
-            var timestamp   = d.timestamp || '';
-            var timeStr     = '';
-            if (timestamp) {
-                try {
-                    var dt = new Date(timestamp);
-                    timeStr = dt.toISOString().slice(11, 23); // HH:MM:SS.mmm
-                } catch(e) {}
-            }
             var last        = box.lastElementChild;
             var replaceLast = !!d.replace_last;
+            var timestamp   = new Date().toLocaleString('en-US', {hour12: false});
             function progressPrefix(s) { return s.replace(/[\d%\[\]]+.*$/, '').trim(); }
             var sameProgress = last && last.classList.contains('out-line') && !last.classList.contains('empty')
-                && progressPrefix(line).length > 3 && progressPrefix(line) === progressPrefix(last.textContent);
+                && progressPrefix(line).length > 3 && progressPrefix(line) === progressPrefix(last.querySelector('.out-line-text') ? last.querySelector('.out-line-text').textContent : last.textContent);
             if (replaceLast || sameProgress) {
-                last.className = 'out-line ' + level;
-                last.innerHTML = '<span class="out-line-text">' + escHtml(line) + '</span>' + (timeStr ? '<span class="out-line-time">' + escHtml(timeStr) + '</span>' : '');
+                last.className   = 'out-line ' + level;
+                var textSpan = last.querySelector('.out-line-text');
+                var timeSpan = last.querySelector('.out-line-timestamp');
+                if (textSpan) textSpan.textContent = line;
+                else {
+                    last.innerHTML = '<span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span>';
+                }
+                if (timeSpan) timeSpan.textContent = timestamp;
             } else {
-                box.insertAdjacentHTML('beforeend', '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span>' + (timeStr ? '<span class="out-line-time">' + escHtml(timeStr) + '</span>' : '') + '</div>');
+                box.insertAdjacentHTML('beforeend', '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>');
             }
             if (atBottom) box.scrollTop = box.scrollHeight;
             if (badge) badge.style.display = 'inline-block';
@@ -1383,6 +1382,7 @@ async function saveSchedule(existingId) {
         executor:         document.getElementById('f_executor').value,
         script_path:      document.getElementById('f_script_path').value.trim(),
         args:             document.getElementById('f_args').value.trim(),
+        venv_path:        document.getElementById('f_venv_path').value.trim(),
         enabled:          document.getElementById('f_enabled').value,
         cron:             document.getElementById('f_cron').value.trim(),
         interval_minutes: document.getElementById('f_interval_minutes').value,
@@ -1396,6 +1396,27 @@ async function saveSchedule(existingId) {
     var data = await res.json();
     if (data.ok) { selectedId = data.id; formDirty = false; await loadList(); selectRow(data.id); }
     else Dialog.error(data.error || 'Save failed');
+}
+
+async function detectVenv(id) {
+    if (!id) return;
+    var res = await fetch('/scheduler/detect-venv?id=' + encodeURIComponent(id));
+    var data = await res.json();
+    if (!data.ok) {
+        Dialog.error('Failed to detect venv');
+        return;
+    }
+    if (!data.venvs || data.venvs.length === 0) {
+        Dialog.info('No virtual environments found in script folder.\n\nSearched for: .venv, venv, env');
+        return;
+    }
+    // Use first detected venv
+    var venv = data.venvs[0];
+    var input = document.getElementById('f_venv_path');
+    if (input) {
+        input.value = venv.path;
+        Dialog.info('Detected venv: ' + venv.name + '\n\nPath: ' + venv.path);
+    }
 }
 
 function _nextDuplicateName(name, existingNames) {

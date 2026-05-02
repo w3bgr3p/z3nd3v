@@ -40,6 +40,7 @@ SCHEMA = {
     "terminal_init_cmd": "TEXT DEFAULT ''",
     "trigger_on_success": "TEXT DEFAULT ''",
     "trigger_on_fail":    "TEXT DEFAULT ''",
+    "venv_path":         "TEXT DEFAULT ''",
 }
 
 QUEUE_SCHEMA = {
@@ -351,6 +352,7 @@ class SchedulerService:
         executor    = rec.get("executor", "python")
         script_path = rec.get("script_path", "")
         args        = rec.get("args", "")
+        venv_path   = rec.get("venv_path", "")
         run_id      = uuid.uuid4().hex[:12]
         instance_key = f"{sid}:{run_id}"
         fired_at    = datetime.now(timezone.utc)
@@ -382,7 +384,7 @@ class SchedulerService:
             sse_broadcast(sid, {"line": line, "level": level, "replace_last": True})
 
         try:
-            cmd = self._build_command(executor, script_path, args)
+            cmd = self._build_command(executor, script_path, args, venv_path)
             workdir = script_path if os.path.isdir(script_path) else (os.path.dirname(script_path) if os.path.isfile(script_path) else os.getcwd())
 
             env = os.environ.copy()
@@ -493,7 +495,7 @@ class SchedulerService:
 
     NPM_RUN_PREFIX = "__npm_run__"
 
-    def _build_command(self, executor: str, script_path: str, args: str) -> list[str]:
+    def _build_command(self, executor: str, script_path: str, args: str, venv_path: str = "") -> list[str]:
         # npm run <script> shortcut stored in args as __npm_run__<script_name>
         if args.startswith(self.NPM_RUN_PREFIX):
             script_name = args[len(self.NPM_RUN_PREFIX):]
@@ -504,7 +506,8 @@ class SchedulerService:
         parts = args.split() if args.strip() else []
 
         if executor == "python":
-            return ["python", script_path] + parts
+            python_exe = self._resolve_python_executable(script_path, venv_path)
+            return [python_exe, script_path] + parts
         if executor == "node":
             if sys.platform == "win32":
                 return ["cmd.exe", "/c", "node", script_path] + parts
@@ -534,6 +537,39 @@ class SchedulerService:
             bash = next((p for p in candidates if os.path.exists(p)), "bash")
             return [bash, script_path] + parts
         return ["bash", script_path] + parts
+
+    def _resolve_python_executable(self, script_path: str, venv_path: str) -> str:
+        """Resolve Python executable: venv if specified, auto-detect, or system python."""
+        # 1. Explicit venv_path provided
+        if venv_path and venv_path.strip():
+            venv_path = venv_path.strip()
+            if sys.platform == "win32":
+                python_exe = os.path.join(venv_path, "Scripts", "python.exe")
+            else:
+                python_exe = os.path.join(venv_path, "bin", "python")
+
+            if os.path.isfile(python_exe):
+                return python_exe
+
+        # 2. Auto-detect venv in script folder
+        folder = script_path if os.path.isdir(script_path) else os.path.dirname(script_path)
+        venv_candidates = [".venv", "venv", "env"]
+
+        for venv_name in venv_candidates:
+            venv_dir = os.path.join(folder, venv_name)
+            if not os.path.isdir(venv_dir):
+                continue
+
+            if sys.platform == "win32":
+                python_exe = os.path.join(venv_dir, "Scripts", "python.exe")
+            else:
+                python_exe = os.path.join(venv_dir, "bin", "python")
+
+            if os.path.isfile(python_exe):
+                return python_exe
+
+        # 3. Fallback to system python
+        return "python"
 
     # ── Status update ─────────────────────────────────────────────────────────
 

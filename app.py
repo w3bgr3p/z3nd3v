@@ -16,6 +16,7 @@ from scheduler_handler import router as scheduler_router
 from scheduler_handler import setup as scheduler_setup
 from scheduler_service import SchedulerService
 from sqlite_viewer_handler import router as sqlite_viewer_router
+from systemd_handler import router as systemd_router
 
 PORT = config.DASHBOARD_PORT
 WWWROOT = config.WWWROOT
@@ -36,6 +37,7 @@ app.include_router(sqlite_viewer_router)
 app.include_router(config_router)
 app.include_router(ai_router)
 app.include_router(docs_graph_router)  # регистрация
+app.include_router(systemd_router)
 # ── Startup / shutdown ────────────────────────────────────────────────────────
 
 

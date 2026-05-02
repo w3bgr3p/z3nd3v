@@ -22,6 +22,8 @@
   var _streaming   = false
   var _contextFns  = []       // registered context providers
   var _sseSource   = null
+  var _selectedModel = localStorage.getItem('ai_selected_model') || 'kr/claude-sonnet-4.5'
+  var _availableModels = []
 
   function _mkId() {
     return 'chat-' + Math.random().toString(36).slice(2)
@@ -29,7 +31,7 @@
 
   // ── DOM ────────────────────────────────────────────────────────────────────
 
-  var _panel, _body, _input, _sendBtn, _newBtn, _resizer, _styleEl
+  var _panel, _body, _input, _sendBtn, _newBtn, _interruptBtn, _modelSelect, _resizer, _styleEl
 
   function _buildDOM() {
     // style injection
@@ -94,6 +96,20 @@
       }
       .ai-hbtn:hover { color: var(--text, #e6edf3); border-color: var(--text2, #8b949e); }
       .ai-hbtn.danger:hover { color: var(--red, #f85149); border-color: var(--red, #f85149); }
+      .ai-hbtn:disabled { opacity: 0.5; cursor: not-allowed; }
+      #ai-model-select {
+        background: var(--bg, #0d1117);
+        border: 1px solid var(--border, #30363d);
+        border-radius: 3px;
+        color: var(--text, #e6edf3);
+        font-size: 10px;
+        padding: 2px 6px;
+        cursor: pointer;
+        max-width: 150px;
+      }
+      #ai-model-select:hover {
+        border-color: var(--accent, #58a6ff);
+      }
       #ai-panel-msgs {
         flex: 1;
         overflow-y: auto;
@@ -218,6 +234,8 @@
       <div id="ai-panel">
         <div id="ai-panel-header">
           <h3>⟡ AI Agent</h3>
+          <select id="ai-model-select" title="Select AI Model"></select>
+          <button class="ai-hbtn" id="ai-interrupt-btn" title="Interrupt agent (Ctrl+C)" disabled>⏸ Stop</button>
           <button class="ai-hbtn" id="ai-new-btn" title="New session">↺ New</button>
           <button class="ai-hbtn danger" id="ai-close-btn" title="Close panel">✕</button>
         </div>
@@ -240,11 +258,17 @@
     _input   = document.getElementById('ai-panel-input')
     _sendBtn = document.getElementById('ai-send-btn')
     _newBtn  = document.getElementById('ai-new-btn')
+    _interruptBtn = document.getElementById('ai-interrupt-btn')
+    _modelSelect = document.getElementById('ai-model-select')
     _resizer = document.getElementById('ai-panel-resizer')
 
     document.getElementById('ai-close-btn').onclick = function () { AiPanel.close() }
     _newBtn.onclick   = _newSession
     _sendBtn.onclick  = _sendMessage
+    _interruptBtn.onclick = _interruptAgent
+    _modelSelect.onchange = _onModelChange
+    _sendBtn.onclick  = _sendMessage
+    _interruptBtn.onclick = _interruptAgent
 
     _input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); _sendMessage() }
@@ -297,6 +321,10 @@
     _panel.classList.add('open')
     document.body.classList.add('ai-panel-open')
     _input.focus()
+    // Load models on first open
+    if (_availableModels.length === 0) {
+      _loadModels()
+    }
   }
 
   function _doClose() {
@@ -308,6 +336,44 @@
 
   // ── Session ────────────────────────────────────────────────────────────────
 
+  function _loadModels() {
+    fetch('/ai/providers')
+      .then(function (resp) { return resp.json() })
+      .then(function (data) {
+        _availableModels = data.models || []
+        _populateModelSelect()
+      })
+      .catch(function (err) {
+        console.error('[ai] failed to load models:', err)
+        // Fallback to default
+        _availableModels = [
+          { fullModel: 'kr/claude-sonnet-4.5', name: 'Claude Sonnet 4.5', available: true }
+        ]
+        _populateModelSelect()
+      })
+  }
+
+  function _populateModelSelect() {
+    _modelSelect.innerHTML = ''
+    _availableModels.forEach(function (model) {
+      if (!model.available) return
+      var opt = document.createElement('option')
+      opt.value = model.fullModel
+      opt.textContent = model.name
+      if (model.fullModel === _selectedModel) {
+        opt.selected = true
+      }
+      _modelSelect.appendChild(opt)
+    })
+  }
+
+  function _onModelChange() {
+    _selectedModel = _modelSelect.value
+    localStorage.setItem('ai_selected_model', _selectedModel)
+    _setStatus('Model: ' + (_availableModels.find(function(m) { return m.fullModel === _selectedModel }) || {}).name)
+    setTimeout(function() { _setStatus('') }, 2000)
+  }
+
   function _newSession() {
     if (_sseSource) { _sseSource.close(); _sseSource = null }
     _chatId    = _mkId()
@@ -316,9 +382,40 @@
     _body.innerHTML = '<div class="ai-empty">New session started.</div>'
     _input.disabled   = false
     _sendBtn.disabled = false
+    _interruptBtn.disabled = true
     _setStatus('')
     // reset cwd to default (app root)
     AiPanel._cwd = AiPanel._defaultCwd || ''
+  }
+
+  // ── Interrupt ──────────────────────────────────────────────────────────────
+
+  function _interruptAgent() {
+    if (!_streaming) return
+
+    fetch('/ai/interrupt', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ chatId: _chatId }),
+    }).then(function (resp) {
+      return resp.json()
+    }).then(function (data) {
+      if (data.ok) {
+        _setStatus('⏸ interrupted')
+        _appendToMsg(_body.lastElementChild, '\n\n[Interrupted by user]')
+      } else {
+        _setStatus('⚠ interrupt failed: ' + (data.error || 'unknown'))
+      }
+    }).catch(function (e) {
+      _setStatus('⚠ interrupt error: ' + e.message)
+    })
+
+    // Immediately disable streaming UI
+    _streaming = false
+    _input.disabled   = false
+    _sendBtn.disabled = false
+    _interruptBtn.disabled = true
+    if (_sseSource) { _sseSource.close(); _sseSource = null }
   }
 
   // ── Context ────────────────────────────────────────────────────────────────
@@ -358,6 +455,7 @@
     _streaming = true
     _input.disabled   = true
     _sendBtn.disabled = true
+    _interruptBtn.disabled = false
     _setStatus('● thinking…')
 
     var cwd = ''
@@ -366,7 +464,12 @@
     fetch('/ai/chat', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ chatId: _chatId, message: message, cwd: cwd }),
+      body:    JSON.stringify({
+        chatId: _chatId,
+        message: message,
+        cwd: cwd,
+        model: _selectedModel
+      }),
     }).then(function (resp) {
       if (!resp.ok) throw new Error('HTTP ' + resp.status)
       var reader  = resp.body.getReader()
@@ -419,6 +522,7 @@
     _streaming        = false
     _input.disabled   = false
     _sendBtn.disabled = false
+    _interruptBtn.disabled = true
     _setStatus('')
     // remove cursor
     var cursor = msgEl.querySelector('.ai-stream-cursor')

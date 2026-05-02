@@ -217,3 +217,41 @@ async def health():
         return JSONResponse({"ok": True, "agent": r.json()})
     except Exception as ex:
         return JSONResponse({"ok": False, "error": str(ex)})
+
+
+@router.post("/interrupt")
+async def interrupt(request: Request):
+    """Interrupt active agent process for given chatId."""
+    body = await request.json()
+    chat_id = body.get("chatId")
+    if not chat_id:
+        return JSONResponse({"error": "chatId required"}, status_code=400)
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as http:
+            r = await http.post(f"{_agent_base}/interrupt", json={"chatId": chat_id})
+        return JSONResponse(r.json())
+    except Exception as ex:
+        return JSONResponse({"ok": False, "error": str(ex)}, status_code=500)
+
+
+@router.get("/providers")
+async def get_providers():
+    """Get available AI providers and models from omniroute."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            # Get providers
+            providers_r = await http.get("http://localhost:20128/api/providers")
+            providers_data = providers_r.json()
+
+            # Get models
+            models_r = await http.get("http://localhost:20128/api/models")
+            models_data = models_r.json()
+
+        return JSONResponse({
+            "providers": providers_data.get("connections", []),
+            "models": models_data.get("models", [])
+        })
+    except Exception as ex:
+        return JSONResponse({"ok": False, "error": str(ex)}, status_code=500)
+

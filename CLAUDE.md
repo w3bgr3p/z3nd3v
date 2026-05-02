@@ -1,5 +1,33 @@
 # CLAUDE.md — API Reference for AI Agent
 
+---
+
+## CRITICAL: User Request Confirmation Protocol
+
+**MANDATORY RULE: Before executing ANY user request, you MUST:**
+
+1. **Restate in your own words** what you understood from the user's request
+2. **Explain your planned approach** - what you're going to do and how
+3. **Wait for explicit confirmation** from the user (e.g., "yes", "ok", "proceed", "correct")
+4. **Only after confirmation** - proceed with making changes
+
+**Example:**
+
+User: "добавь логирование в функцию process_data"
+Assistant response: "Я понял, что нужно:
+- Добавить логирование в функцию process_data
+- Вероятно, логировать входные параметры, ошибки и результат работы
+
+Мой план:
+1. Найду функцию process_data в коде
+2. Добавлю import logging в начало файла (если его нет)
+3. Добавлю логи: начало выполнения, входные данные, ошибки (если есть), результат
+4. Использую уровни INFO для обычных операций и ERROR для ошибок
+
+Правильно я понял? Можно приступать?"
+
+User: "да, давай"# CLAUDE.md — API Reference for AI Agent
+
 This file describes the z3nIO HTTP API available to the Claude Code agent.
 Use it to interact with the task scheduler, read output, manage tasks, and query the database.
 
