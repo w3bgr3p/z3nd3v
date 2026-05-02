@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import shlex
 import sys
 import uuid
 from collections import defaultdict
@@ -503,7 +504,13 @@ class SchedulerService:
                 return ["cmd.exe", "/c", "npm", "run", script_name]
             return ["npm", "run", script_name]
 
-        parts = args.split() if args.strip() else []
+        try:
+            parts = shlex.split(args, posix=False) if args.strip() else []
+            # Remove surrounding quotes from each part if present
+            parts = [p.strip('"').strip("'") for p in parts]
+        except ValueError:
+            # Fallback if shlex fails (unclosed quotes, etc.)
+            parts = args.split() if args.strip() else []
 
         if executor == "python":
             python_exe = self._resolve_python_executable(script_path, venv_path)
