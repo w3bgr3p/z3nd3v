@@ -233,3 +233,25 @@ async def interrupt(request: Request):
         return JSONResponse(r.json())
     except Exception as ex:
         return JSONResponse({"ok": False, "error": str(ex)}, status_code=500)
+
+
+@router.get("/providers")
+async def get_providers():
+    """Get available AI providers and models from omniroute."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            # Get providers
+            providers_r = await http.get("http://localhost:20128/api/providers")
+            providers_data = providers_r.json()
+
+            # Get models
+            models_r = await http.get("http://localhost:20128/api/models")
+            models_data = models_r.json()
+
+        return JSONResponse({
+            "providers": providers_data.get("connections", []),
+            "models": models_data.get("models", [])
+        })
+    except Exception as ex:
+        return JSONResponse({"ok": False, "error": str(ex)}, status_code=500)
+

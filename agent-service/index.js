@@ -42,7 +42,7 @@ function resolveDir(p) {
 app.use(express.json())
 
 app.post('/chat', async (req, res) => {
-  const { chatId, message, cwd } = req.body
+  const { chatId, message, cwd, model } = req.body
   if (!chatId || !message) return res.status(400).json({ error: 'chatId and message required' })
 
   res.setHeader('Content-Type',  'text/event-stream')
@@ -57,6 +57,13 @@ app.post('/chat', async (req, res) => {
     const sessionId = sessions.get(chatId)
     const spawnCwd  = resolveDir(cwd)
 
+    // Create custom env with selected model
+    const customEnv = { ...agentEnv }
+    if (model) {
+      customEnv.ANTHROPIC_MODEL = model
+      customEnv.ANTHROPIC_SMALL_FAST_MODEL = model
+    }
+
     const args = [
       CLAUDE_CLI,
       '--output-format', 'stream-json',
@@ -67,10 +74,11 @@ app.post('/chat', async (req, res) => {
     if (sessionId) args.push('--resume', sessionId)
 
     console.log('[spawn] cwd:', spawnCwd)
+    console.log('[spawn] model:', model || customEnv.ANTHROPIC_MODEL)
 
     const proc = spawn(process.execPath, args, {
       cwd:         spawnCwd,
-      env:         agentEnv,
+      env:         customEnv,
       stdio:       ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     })

@@ -553,7 +553,7 @@ function runInstall(s, btn) {
             var d    = JSON.parse(e.data);
             var line  = d.line || '';
             var level = (d.level || 'INFO').toUpperCase();
-            var timestamp = new Date().toISOString();
+            var timestamp = new Date().toLocaleString('en-US', {hour12: false});
             if (!box) return;
             var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
             box.insertAdjacentHTML('beforeend',
@@ -1032,7 +1032,7 @@ function renderOutputLines(text) {
         if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
         else if (/\[WARNING\]|\[WARN\]/i.test(line)) level = 'WARNING';
         else if (/\[DEBUG\]/i.test(line))            level = 'DEBUG';
-        var timestamp = new Date().toISOString();
+        var timestamp = new Date().toLocaleString('en-US', {hour12: false});
         return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span><span class="out-line-timestamp">' + timestamp + '</span></div>';
     }).join('');
 }
@@ -1053,7 +1053,7 @@ function loadOutput(id) {
             if (!text.trim()) {
                 box.innerHTML = '<div class="out-line empty">(no output yet)</div>';
             } else {
-                var timestamp = new Date().toISOString();
+                var timestamp = new Date().toLocaleString('en-US', {hour12: false});
                 box.innerHTML = text.split('\n').map(function(line) {
                     var level = 'INFO';
                     if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
@@ -1090,7 +1090,7 @@ function startSseOutput(id) {
             var line        = d.line || '';
             var last        = box.lastElementChild;
             var replaceLast = !!d.replace_last;
-            var timestamp   = new Date().toISOString();
+            var timestamp   = new Date().toLocaleString('en-US', {hour12: false});
             function progressPrefix(s) { return s.replace(/[\d%\[\]]+.*$/, '').trim(); }
             var sameProgress = last && last.classList.contains('out-line') && !last.classList.contains('empty')
                 && progressPrefix(line).length > 3 && progressPrefix(line) === progressPrefix(last.querySelector('.out-line-text') ? last.querySelector('.out-line-text').textContent : last.textContent);

@@ -362,12 +362,68 @@ async def open_folder(path: str = ""):
 
 
 def _open_path(path: str):
+    """Open file or folder in default application."""
+    import shutil
+
     if sys.platform == "win32":
         os.startfile(path)
     elif sys.platform == "darwin":
         subprocess.Popen(["open", path])
     else:
-        subprocess.Popen(["xdg-open", path])
+        # Linux: for directories, prefer file manager over xdg-open
+        if os.path.isdir(path):
+            # Try common file managers
+            file_managers = [
+                "nautilus",      # GNOME
+                "dolphin",       # KDE
+                "thunar",        # XFCE
+                "nemo",          # Cinnamon
+                "caja",          # MATE
+                "pcmanfm",       # LXDE
+                "pcmanfm-qt",    # LXQt
+            ]
+
+            launched = False
+            for fm in file_managers:
+                if shutil.which(fm):
+                    try:
+                        # Launch with proper session handling for window manager integration
+                        subprocess.Popen(
+                            [fm, path],
+                            start_new_session=True,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        launched = True
+                        break
+                    except Exception:
+                        continue
+
+            if not launched:
+                # Fallback to xdg-open
+                try:
+                    subprocess.Popen(
+                        ["xdg-open", path],
+                        start_new_session=True,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    subprocess.Popen(["xdg-open", path])
+        else:
+            # For files, use xdg-open (works correctly)
+            try:
+                subprocess.Popen(
+                    ["xdg-open", path],
+                    start_new_session=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                subprocess.Popen(["xdg-open", path])
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -633,57 +689,129 @@ async def open_terminal(id: str = ""):
 
     print(f"[terminal] override={term_override!r} init_cmd={term_init_cmd!r} folder={folder!r}")
     try:
-        _launch_terminal(folder, term_override or "", term_init_cmd or "")
+        error_msg = _launch_terminal(folder, term_override or "", term_init_cmd or "")
+        if error_msg:
+            return _json({"ok": False, "error": error_msg})
         return _json({"ok": True, "debug": {"override": term_override, "init_cmd": term_init_cmd, "folder": folder}})
     except Exception as ex:
         return _json({"ok": False, "error": str(ex)})
 
 
-def _launch_terminal(cwd: str, override: str = "", init_cmd: str = ""):
+def _launch_terminal(cwd: str, override: str = "", init_cmd: str = "") -> str | None:
+    """Launch terminal in given directory. Returns error message if failed, None on success."""
     import subprocess
+    import shutil
+
     # per-task override wins over global config
     terminal  = override.strip() if override.strip() else getattr(config, "TERMINAL", "cmd")
     term_path = getattr(config, "TERMINAL_PATH", "").strip()
 
-    if terminal == "cmd":
-        cd_cmd = f"cd /d {cwd}"
-        full   = f"{cd_cmd} && {init_cmd}" if init_cmd.strip() else cd_cmd
-        subprocess.Popen(
-            ["cmd.exe", "/K", full],
-            creationflags=_CREATE_NEW_CONSOLE,
-        )
-
-    elif terminal == "powershell":
-        cd_cmd = f"Set-Location '{cwd}'"
-        full   = f"{cd_cmd}; {init_cmd}" if init_cmd.strip() else cd_cmd
-        subprocess.Popen(
-            ["powershell.exe", "-NoExit", "-Command", full],
-            creationflags=_CREATE_NEW_CONSOLE,
-        )
-
-    elif terminal == "gitbash":
-        bash = _find_gitbash()
-        if not bash:
-            raise RuntimeError(
-                "Git Bash not found. Install Git for Windows or set TERMINAL_PATH."
+    # Windows terminals
+    if sys.platform == "win32":
+        if terminal == "cmd":
+            cd_cmd = f"cd /d {cwd}"
+            full   = f"{cd_cmd} && {init_cmd}" if init_cmd.strip() else cd_cmd
+            subprocess.Popen(
+                ["cmd.exe", "/K", full],
+                creationflags=_CREATE_NEW_CONSOLE,
             )
-        # write init commands via --rcfile approach or pass as -c "cd ... && exec bash"
-        cd_expr = f"cd '{cwd}'"
-        full    = f"{cd_expr} && {init_cmd} && exec bash" if init_cmd.strip() else f"{cd_expr} && exec bash"
-        subprocess.Popen(
-            [bash, "--login", "-c", full],
-            creationflags=_CREATE_NEW_CONSOLE,
-        )
 
-    elif terminal == "third_party":
-        if not term_path:
-            raise RuntimeError("TERMINAL_PATH is not set in config.py")
-        if not os.path.isfile(term_path):
-            raise RuntimeError(f"Terminal not found: {term_path}")
-        subprocess.Popen([term_path], cwd=cwd)
+        elif terminal == "powershell":
+            cd_cmd = f"Set-Location '{cwd}'"
+            full   = f"{cd_cmd}; {init_cmd}" if init_cmd.strip() else cd_cmd
+            subprocess.Popen(
+                ["powershell.exe", "-NoExit", "-Command", full],
+                creationflags=_CREATE_NEW_CONSOLE,
+            )
 
+        elif terminal == "gitbash":
+            bash = _find_gitbash()
+            if not bash:
+                return "Git Bash not found. Install Git for Windows or set TERMINAL_PATH."
+            cd_expr = f"cd '{cwd}'"
+            full    = f"{cd_expr} && {init_cmd} && exec bash" if init_cmd.strip() else f"{cd_expr} && exec bash"
+            subprocess.Popen(
+                [bash, "--login", "-c", full],
+                creationflags=_CREATE_NEW_CONSOLE,
+            )
+
+        elif terminal == "third_party":
+            if not term_path:
+                return "TERMINAL_PATH is not set in config.py"
+            if not os.path.isfile(term_path):
+                return f"Terminal not found: {term_path}"
+            subprocess.Popen([term_path], cwd=cwd)
+
+        else:
+            return f"Unknown TERMINAL value: {terminal!r}"
+
+    # Linux terminals
     else:
-        raise RuntimeError(f"Unknown TERMINAL value: {terminal!r}")
+        # Check if DISPLAY is set (required for GUI terminals)
+        if not os.environ.get("DISPLAY"):
+            return (
+                "DISPLAY environment variable not set. "
+                "Service is running without access to graphical environment. "
+                "Solution: Run service in user session or configure systemd service with DISPLAY variable."
+            )
+
+        # Build init command if provided
+        if init_cmd.strip():
+            bash_cmd = f"cd '{cwd}' && {init_cmd} && exec $SHELL"
+        else:
+            bash_cmd = f"cd '{cwd}' && exec $SHELL"
+
+        if terminal == "third_party" and term_path:
+            if not os.path.isfile(term_path):
+                return f"Terminal not found: {term_path}"
+            try:
+                subprocess.Popen([term_path], cwd=cwd, env=os.environ.copy())
+            except Exception as e:
+                return f"Failed to launch terminal: {e}"
+        else:
+            # Auto-detect available terminal on Linux
+            # kitty first as it's the user's default
+            linux_terminals = [
+                ("kitty", ["kitty", "--directory", cwd, "bash", "-c", bash_cmd]),
+                ("alacritty", ["alacritty", "--working-directory", cwd, "-e", "bash", "-c", bash_cmd]),
+                ("gnome-terminal", ["gnome-terminal", "--working-directory", cwd, "--", "bash", "-c", bash_cmd]),
+                ("konsole", ["konsole", "--workdir", cwd, "-e", "bash", "-c", bash_cmd]),
+                ("xfce4-terminal", ["xfce4-terminal", "--working-directory", cwd, "-e", f"bash -c '{bash_cmd}'"]),
+                ("terminator", ["terminator", "--working-directory", cwd, "-e", f"bash -c '{bash_cmd}'"]),
+                ("xterm", ["xterm", "-e", f"bash -c 'cd {cwd} && {init_cmd if init_cmd.strip() else ''} exec $SHELL'"]),
+            ]
+
+            # Try to find and launch first available terminal
+            launched = False
+            last_error = None
+            for term_name, cmd in linux_terminals:
+                if shutil.which(term_name):
+                    try:
+                        # Launch with setsid to create new session, helps with window manager integration
+                        # Use shell=False and pass command as list for security
+                        subprocess.Popen(
+                            cmd,
+                            env=os.environ.copy(),
+                            start_new_session=True,  # Creates new session, helps Pop Shell detect window
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        launched = True
+                        break
+                    except Exception as e:
+                        last_error = str(e)
+                        continue
+
+            if not launched:
+                if last_error:
+                    return f"Failed to launch terminal: {last_error}"
+                return (
+                    "No terminal emulator found. Install gnome-terminal, konsole, xterm, "
+                    "or set TERMINAL_PATH in config.py"
+                )
+
+    return None  # Success
 
 
 # Windows CREATE_NEW_CONSOLE flag (0 on non-Windows — Popen ignores it)
