@@ -139,6 +139,10 @@ def sse_unsubscribe(schedule_id: str, q: asyncio.Queue):
 
 
 def sse_broadcast(schedule_id: str, data: dict):
+    # Add timestamp to output lines
+    if "line" in data and "timestamp" not in data:
+        data["timestamp"] = datetime.now(timezone.utc).isoformat()
+
     for q in list(_sse_queues.get(schedule_id, [])):
         try:
             q.put_nowait(data)

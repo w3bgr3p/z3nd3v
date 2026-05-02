@@ -140,12 +140,14 @@
         .live-badge { font-size: 9px; padding: 2px 6px; border-radius: 3px; background: var(--green-bg, rgba(63,185,80,0.15)); color: var(--green, #3fb950); animation: blink 1.2s infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
         .output-box { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; overflow-y: auto; height: calc(100% - 40px); min-height: 100px; }
-        .out-line { padding: 2px 10px; border-bottom: 1px solid var(--bg2); font-family: 'Consolas', monospace; font-size: 10px; line-height: 1.6; word-break: break-all; }
+        .out-line { padding: 2px 10px; border-bottom: 1px solid var(--bg2); font-family: 'Consolas', monospace; font-size: 10px; line-height: 1.6; word-break: break-all; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+        .out-line-text { flex: 1; min-width: 0; }
+        .out-line-time { flex-shrink: 0; font-size: 8px; opacity: 0.35; color: var(--text2); font-family: 'Consolas', monospace; }
         .out-line.ERROR   { color: var(--red, #f85149); }
         .out-line.WARNING { color: var(--yellow, #d29922); }
         .out-line.INFO    { color: var(--text); }
         .out-line.DEBUG   { color: var(--text2); }
-        .out-line.empty   { color: var(--text2); padding: 12px; text-align: center; }
+        .out-line.empty   { color: var(--text2); padding: 12px; text-align: center; display: block; }
 
         .h-resizer { height: 5px; background: var(--bg2); cursor: row-resize; flex-shrink: 0; margin: 1px 0; border-radius: 2px; }
         .h-resizer:hover { background: var(--accent); }

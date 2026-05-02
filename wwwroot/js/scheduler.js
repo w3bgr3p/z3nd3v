@@ -553,10 +553,18 @@ function runInstall(s, btn) {
             var d    = JSON.parse(e.data);
             var line  = d.line || '';
             var level = (d.level || 'INFO').toUpperCase();
+            var timestamp = d.timestamp || '';
+            var timeStr = '';
+            if (timestamp) {
+                try {
+                    var dt = new Date(timestamp);
+                    timeStr = dt.toISOString().slice(11, 23);
+                } catch(e) {}
+            }
             if (!box) return;
             var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
             box.insertAdjacentHTML('beforeend',
-                '<div class="out-line ' + level + '">' + escHtml(line) + '</div>');
+                '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span>' + (timeStr ? '<span class="out-line-time">' + escHtml(timeStr) + '</span>' : '') + '</div>');
             if (atBottom) box.scrollTop = box.scrollHeight;
         } catch(err) {}
     });
@@ -1026,7 +1034,7 @@ function renderOutputLines(text) {
         if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
         else if (/\[WARNING\]|\[WARN\]/i.test(line)) level = 'WARNING';
         else if (/\[DEBUG\]/i.test(line))            level = 'DEBUG';
-        return '<div class="out-line ' + level + '">' + escHtml(line) + '</div>';
+        return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span></div>';
     }).join('');
 }
 
@@ -1051,7 +1059,7 @@ function loadOutput(id) {
                     if (/\[ERROR\]|\[ERR\]/i.test(line))        level = 'ERROR';
                     else if (/\[WARNING\]|\[WARN\]/i.test(line)) level = 'WARNING';
                     else if (/\[DEBUG\]/i.test(line))            level = 'DEBUG';
-                    return '<div class="out-line ' + level + '">' + escHtml(line) + '</div>';
+                    return '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span></div>';
                 }).join('');
                 box.scrollTop = box.scrollHeight;
             }
@@ -1080,16 +1088,24 @@ function startSseOutput(id) {
             var level       = (d.level || 'INFO').toUpperCase();
             var atBottom    = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
             var line        = d.line || '';
+            var timestamp   = d.timestamp || '';
+            var timeStr     = '';
+            if (timestamp) {
+                try {
+                    var dt = new Date(timestamp);
+                    timeStr = dt.toISOString().slice(11, 23); // HH:MM:SS.mmm
+                } catch(e) {}
+            }
             var last        = box.lastElementChild;
             var replaceLast = !!d.replace_last;
             function progressPrefix(s) { return s.replace(/[\d%\[\]]+.*$/, '').trim(); }
             var sameProgress = last && last.classList.contains('out-line') && !last.classList.contains('empty')
                 && progressPrefix(line).length > 3 && progressPrefix(line) === progressPrefix(last.textContent);
             if (replaceLast || sameProgress) {
-                last.className   = 'out-line ' + level;
-                last.textContent = line;
+                last.className = 'out-line ' + level;
+                last.innerHTML = '<span class="out-line-text">' + escHtml(line) + '</span>' + (timeStr ? '<span class="out-line-time">' + escHtml(timeStr) + '</span>' : '');
             } else {
-                box.insertAdjacentHTML('beforeend', '<div class="out-line ' + level + '">' + escHtml(line) + '</div>');
+                box.insertAdjacentHTML('beforeend', '<div class="out-line ' + level + '"><span class="out-line-text">' + escHtml(line) + '</span>' + (timeStr ? '<span class="out-line-time">' + escHtml(timeStr) + '</span>' : '') + '</div>');
             }
             if (atBottom) box.scrollTop = box.scrollHeight;
             if (badge) badge.style.display = 'inline-block';
